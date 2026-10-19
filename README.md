@@ -3,102 +3,175 @@
 Privacy-preserving membership architecture for the New Tibet ecosystem.
 
 > [!IMPORTANT]
-> This is a concept architecture for foundation, privacy, legal, and security review. It is not a production specification or a claim of regulatory compliance.
+> This is a concept and code-level specification for foundation, CTA, privacy, legal, and security review. It is not a production system or a claim of regulatory compliance. Mermaid diagrams and the policy examples below are source code; production rules must also be enforced by contracts and automated tests.
 
-## Goals
+## Contents
 
-- Verify eligibility without maintaining a central identity database.
-- Keep routine membership checks unlinkable to the member's source documents.
-- Put only pseudonymous commitments, state, and audit anchors onchain.
-- Require recorded, time-limited approval for exceptional access to identity data.
-- Let a member request deletion without freezing or taking custody of their funds.
-- Let distinct eligible green book holders build a member's community standing through vouches, capped at five.
+1. [Background: Green Books and Blue Books](#1-background-green-books-and-blue-books)
+2. [Membership rules](#2-membership-rules)
+3. [Admission and community standing](#3-admission-and-community-standing)
+4. [The identity capsule](#4-the-identity-capsule)
+5. [Onchain state and future CTA integration](#5-onchain-state-and-future-cta-integration)
+6. [Exceptional access](#6-exceptional-access)
+7. [Deletion and re-entry](#7-deletion-and-re-entry)
+8. [Implementation work](#8-implementation-work)
+9. [References](#9-references)
 
-## Admission paths
+## 1. Background: Green Books and Blue Books
 
-There are two separate ways to become a member.
+The two books represent different relationships with the Tibetan community:
 
-### 1. Green or blue book plus ZKPassport
+- **Green Book - Tibetans.** The Central Tibetan Administration (CTA) Department of Finance maintains the Green Book system for Tibetans and records voluntary contributions. The CTA's digital portal supports applications for new, modified, lost, and additional Green Books, with review by a Tibetan Settlement Office and the Department of Finance.
+- **Blue Book - Tibetan supporters.** The CTA describes the Blue Book as the Tibetan Solidarity Partnership. Introduced in 1996 and patterned after the Green Book, it records contributions by friends and supporters of Tibet.
 
-The document path requires both:
+For this architecture, a verified Green Book supports the `TIBETAN` membership class and a verified Blue Book supports the `SUPPORTER` class. A Green Book holder may also sponsor another person through the separate invitation path. That invitation proves community sponsorship; it does not claim that the invited person personally holds either book.
 
-1. evidence from a Tibetan green book or blue book; and
-2. a valid [ZKPassport](https://zkpassport.id/) proof.
-
-The ZKPassport proof is **in addition to**, not a replacement for, the green or blue book. It can prove narrowly requested properties such as document authenticity, personhood, or uniqueness without disclosing the underlying government identity document. It does not itself prove Tibetan eligibility.
-
-After an authorised reviewer confirms the combined evidence, source photographs and temporary uploads are deleted. Only the minimum justified identity capsule is retained under encrypted 2-of-3 custody.
-
-### 2. Green book holder invitation
-
-A person may instead redeem a single-use, expiring invite code issued by an eligible green book holder. This path requires **neither a green or blue book nor a ZKPassport proof** from the invited person. The issuer's eligibility and the code's validity are checked; the code is then burned and deleted.
-
-The issuer's sponsorship counts as the invited member's first vouch. Additional distinct eligible green book holders may vouch for the member. Each holder can count only once for the same member, and community standing is capped at five vouches.
-
-Standing is a bounded community signal, not proof of legal identity, ownership of funds, or permission for custodians to reveal personal information.
+New Tibet is not presented as part of the CTA, and this repository does not imply CTA endorsement. Any future connection to CTA systems would require CTA agreement, a documented interface, and independent privacy and security review.
 
 ```mermaid
 flowchart TD
-    A[Applicant starts private enrollment] --> B{Choose admission path}
+    A[Membership evidence] --> B{Evidence type}
+    B -->|Green Book| C[Tibetan]
+    B -->|Blue Book| D[Tibetan supporter]
+    B -->|Invite from eligible Green Book holder| E[Sponsored community member]
 
-    B -->|Document path| C[Present green or blue book evidence]
-    C --> D[Provide ZKPassport proof]
-    D --> E[Verify both forms of evidence and check uniqueness]
-
-    B -->|Invitation path| F[Redeem single-use invite from eligible green book holder]
-    F --> G[No green or blue book and no ZKPassport required]
-    G --> H[Validate issuer eligibility and burn invite code]
-
-    E --> I[Approve membership]
-    H --> I
-    I --> J[Delete source documents and temporary proof material]
-    J --> K[Issue pseudonymous membership credential]
-    J --> L[Encrypt minimum identity capsule when one is justified]
-    L --> M[Split ciphertext key or capsule into 2-of-3 custody]
-
-    K --> N[Routine login, eligibility, and voting without PII reconstruction]
-    I --> O[Accept vouches from distinct eligible green book holders]
-    O --> P[Community standing equals distinct active vouches, capped at 5]
+    C --> F[Book evidence plus ZKPassport]
+    D --> F
+    E --> G[No book and no ZKPassport required]
 ```
 
-## Privacy and custody architecture
+## 2. Membership rules
 
-Routine membership does not require reconstructing personal information. A member proves control of a secret associated with an opaque member commitment and presents a current anonymous credential or zero-knowledge membership proof.
+The implementation must preserve these invariants:
 
-If a minimum identity capsule is legally or operationally necessary, it is encrypted before storage. The decryption material is split across three independently governed custodians:
+```typescript
+const policy = {
+  bookPathRequires: ["verified_green_or_blue_book", "zkpassport_proof"],
+  invitePathRequires: ["unused_invite_from_eligible_green_book_holder"],
+  zkPassportRecord: ["country", "over18"], // exactly these two outputs
+  maxStanding: 5,
+  deletionAffects: ["membership", "protected_ecosystem_access"],
+  deletionNeverAffects: ["wallet_keys", "token_balances", "fund_transfers"],
+} as const;
+```
 
-- A: New Tibet Foundation
-- B: a Tibetan institution
-- C: an independent security trustee
+The ZKPassport record contains the proved **country** and whether the person is **over 18**, and nothing else. It must not record a name, exact date of birth, document number, address, photograph, or raw passport data. On the book path this proof is additional to - never a substitute for - Green or Blue Book evidence.
 
-Any two shares can reconstruct access for one authorised, member-specific session. One compromised custodian cannot do so alone. Two colluding custodians remain a material threat, so shares must be non-exportable where possible, access must be enforced by policy-aware HSM or vault infrastructure, and every reconstruction must produce a signed audit event.
+```typescript
+expect(admit({ book: "green", zk: { country: "IN", over18: true } })).toAccept();
+expect(admit({ book: "blue",  zk: { country: "GB", over18: true } })).toAccept();
+expect(admit({ book: "green", zk: undefined })).toReject();
+expect(admit({ invite: "valid-green-holder-code", book: undefined, zk: undefined })).toAccept();
+expect(standing({ distinctEligibleGreenBookVouchers: 9 })).toBe(5);
+```
+
+## 3. Admission and community standing
+
+### 3.1 Book path
+
+1. An authorised reviewer verifies a Green or Blue Book.
+2. The applicant provides a ZKPassport proof containing only `country` and `over18`.
+3. The reviewer checks both results and approves or rejects the application.
+4. Source photos, uploads, and temporary proof material are deleted after the approved review and appeal window.
+5. The system issues a pseudonymous membership credential and EAS status attestation.
+
+### 3.2 Green Book holder invitation path
+
+1. An eligible Green Book holder creates a single-use, expiring invite code.
+2. The applicant redeems it without presenting a Green Book, Blue Book, or ZKPassport proof.
+3. The system validates the issuer, burns the code, and records the issuer's first vouch through a pairwise nullifier.
+4. The system issues a sponsored membership credential.
+
+### 3.3 Standing
+
+Each additional vouch must come from a distinct eligible Green Book holder. The same holder cannot increase the same member's standing twice. Standing is `min(distinct active vouches, 5)` and is only a bounded community signal; it is not proof of legal identity or control of funds.
+
+```mermaid
+flowchart TD
+    A[Applicant] --> B{Admission path}
+
+    B -->|Green or Blue Book| C[Verify book]
+    C --> D[Verify ZKPassport country and over18 only]
+    D --> E[Delete source material after review window]
+
+    B -->|Green Book holder invite| F[Validate single-use code]
+    F --> G[No book or ZKPassport required]
+    G --> H[Burn code and count inviter as first vouch]
+
+    E --> I[Issue pseudonymous credential]
+    H --> I
+    I --> J[Accept distinct eligible Green Book holder vouches]
+    J --> K[Standing capped at 5]
+```
+
+## 4. The identity capsule
+
+The identity capsule is a small, encrypted, per-member record used only when the system must recover the basis for a membership decision. It is not a document archive and must not contain book photographs, book numbers, passport data, exact dates of birth, or ordinary wallet addresses.
+
+Its base schema is deliberately allowlisted:
+
+```typescript
+type ZKPassportRecord = Readonly<{
+  country: string; // ISO 3166 country code proved by ZKPassport
+  over18: boolean;
+}>;
+
+type AdmissionEvidence =
+  | Readonly<{
+      kind: "green_book" | "blue_book";
+      verificationResult: "verified";
+      verifiedAt: string;
+      zkPassport: ZKPassportRecord; // no other ZKPassport fields permitted
+    }>
+  | Readonly<{
+      kind: "green_book_holder_invite";
+      inviteReceiptCommitment: string;
+      // no book evidence and no ZKPassport record
+    }>;
+
+type IdentityCapsule = Readonly<{
+  version: 1;
+  privateMemberId: string; // random 256-bit value; never an email or wallet
+  membershipClass: "TIBETAN" | "SUPPORTER" | "SPONSORED";
+  admission: AdmissionEvidence;
+  activeVouchReceiptCommitments: readonly string[]; // maximum five counted
+  createdAt: string;
+  policyVersion: string;
+}>;
+```
+
+Contact details or other legally required personal data are not part of the base capsule. If a reviewed use case genuinely requires them, they belong in a separately encrypted, purpose-limited extension with its own retention deadline.
+
+### 4.1 Storage and custody
+
+1. Generate a fresh random data-encryption key for each capsule.
+2. Encrypt the serialised capsule with an authenticated cipher such as AES-256-GCM or XChaCha20-Poly1305.
+3. Store only ciphertext in private object storage.
+4. Split or threshold-wrap the data-encryption key across three independently governed custodians: the New Tibet Foundation, a Tibetan institution, and an independent security trustee.
+5. Require any two custodians for one member-specific, time-limited reconstruction.
+6. Never place the storage location, key shares, plaintext, or identifying fields onchain.
 
 ```mermaid
 flowchart LR
-    A[Minimum identity capsule] --> B[Envelope encryption]
+    A[Allowlisted identity capsule] --> B[Per-member authenticated encryption]
     B --> C[Ciphertext in private storage]
-    B --> D[2-of-3 key shares]
+    B --> D[Threshold-wrapped key]
     D --> E[Custodian A]
     D --> F[Custodian B]
     D --> G[Custodian C]
 
-    H[Anonymous member credential] --> I[Routine ecosystem checks]
-    I --> J[No PII reconstruction]
+    H[2-of-3 authorised session] --> D
+    D --> I[Temporary one-member decryption]
+    I --> J[Destroy reconstructed key and plaintext]
 ```
 
-## Onchain records with Ethereum Attestation Service
+## 5. Onchain state and future CTA integration
 
-[Ethereum Attestation Service (EAS)](https://attest.org/) provides a schema registry and an attestation contract. This architecture uses revocable EAS attestations as a public integrity and status layer, not as an identity database. A resolver or registry contract should enforce authorised issuers, valid state transitions, unique vouchers, and the five-vouch cap.
-
-The production chain is a deployment decision. Start on a testnet and record the selected chain, EAS contract address, schema UIDs, resolver address, and governance owner before launch.
-
-### Conceptual schemas
-
-The exact ABI schemas should be finalised during implementation. A minimal starting point is:
+[Ethereum Attestation Service (EAS)](https://attest.org/) is the public integrity and revocation layer, not an identity database. EAS receives only high-entropy commitments, status, standing, policy versions, and audit roots.
 
 ```text
 MembershipStatus:
-bytes32 memberCommitment, uint8 state, uint8 standing, bytes32 policyVersion, bytes32 offchainRecordCommitment
+bytes32 memberCommitment, uint8 state, uint8 standing, bytes32 policyVersion, bytes32 capsuleCommitment
 
 Vouch:
 bytes32 memberCommitment, bytes32 voucherNullifier, bytes32 policyVersion
@@ -113,143 +186,114 @@ DeletionReceipt:
 bytes32 erasureCommitment, bytes32 policyVersion
 ```
 
-Suggested state values are `1 = active`, `2 = restricted`, and `3 = revoked`. In EAS, the active status attestation should be revocable. A state or standing change revokes the current attestation and issues a successor under the same policy. EAS history is immutable, so deletion cannot erase a past transaction; privacy depends on never putting identifying data into that transaction.
+No EAS attestation may contain names, contact details, wallet-to-person mappings, book or passport numbers, images, invite codes, raw ZK proofs, country, age status, or private-storage locations. The capsule commitment must be strongly salted so it cannot be used to guess capsule contents.
 
-### What is stored onchain
+### 5.1 Possible CTA integration
 
-- A random-looking member commitment derived from a member secret with domain separation and strong entropy.
-- Active, restricted, or revoked membership state.
-- Standing from 0 to 5.
-- Pairwise voucher nullifiers that let a resolver reject a second vouch from the same eligible green book holder for the same member without publishing the holder's identity.
-- Policy versions, random request commitments, and Merkle roots of private audit logs.
-- Revocations and non-identifying erasure receipts.
+A future, CTA-approved adapter could query or receive a signed result from the CTA's internal Green/Blue Book system. The minimal response should be an opaque subject reference plus `valid`, `revoked`, or `unknown`; it should not copy the CTA record into New Tibet.
 
-The EAS attester should be a registry contract or privacy-preserving relayer rather than the member's ordinary wallet. Use a neutral recipient where the deployment supports it so the attestation does not create a public wallet-to-member link. Eligibility proofs and resolver logic must ensure that only an authorised green book holder can create a valid vouch.
+A verified CTA revocation could revoke or restrict the corresponding New Tibet membership credential and EAS attestation after the agreed due-process and appeal rules run. It must never freeze funds. The adapter must have authority over the membership registry only and must hold no role, allowance, or upgrade power in token or treasury contracts.
 
-### What must never be stored onchain
+```solidity
+interface IMembershipRegistry {
+    function revoke(bytes32 memberCommitment, bytes32 reasonCommitment) external;
+}
 
-- Names, birth dates, addresses, emails, phone numbers, photographs, or document numbers.
-- Green or blue book images or numbers.
-- Passport data, ZKPassport source data, or selectively disclosed identity attributes that are not strictly necessary.
-- Wallet-to-person mappings.
-- Invite codes or hashes of guessable or low-entropy personal data.
-- Storage URLs, object keys, or content identifiers that reveal or enable discovery of private records.
+contract CTAStatusAdapter {
+    IMembershipRegistry public immutable membershipRegistry;
 
-```mermaid
-flowchart TD
-    A[Private enrollment service] --> B[Generate member commitment]
-    A --> C[Encrypt minimal offchain record]
-    B --> D[Registry resolver validates transition]
-    E[Eligible green book holder proof] --> F[Pairwise voucher nullifier]
-    F --> D
-    D --> G[EAS membership and vouch attestations]
-    G --> H[Public commitments, state, standing, policy version]
-    C --> I[Private 2-of-3 custody]
-    I -. commitment only .-> G
-
-    J[No names, book numbers, passport data, or wallet mapping] -. prohibited .-> G
+    // Called only after authenticating a CTA-approved signed status response.
+    function applyCTARevocation(
+        bytes32 memberCommitment,
+        bytes32 reasonCommitment
+    ) external onlyAuthorisedCTAOracle {
+        membershipRegistry.revoke(memberCommitment, reasonCommitment);
+        // Intentionally no token, wallet, treasury, transfer, or freeze call.
+    }
+}
 ```
 
-## Exceptional access to private identity data
+```mermaid
+flowchart LR
+    A[CTA internal system] -->|Signed minimal status| B[CTA-approved adapter]
+    B -->|valid| C[Membership remains active]
+    B -->|revoked after due process| D[Revoke EAS membership status]
+    D --> E[Restrict protected ecosystem access]
+    D -. no authority .-> F[Wallet and funds remain untouched]
+```
 
-Exceptional access is allowed only for a specific member, justified purpose, narrow scope, and short time window.
+EAS history is immutable, so a revoked attestation remains visible as pseudonymous history. This is why identifying data and the two ZKPassport outputs stay offchain inside the encrypted capsule.
 
-1. Create an access request in the private audit system.
-2. Two independent custodians approve it through a dedicated 2-of-3 Safe.
-3. Put only a random request commitment and expiry onchain as an EAS `AccessApproval` attestation. Never put the member reference, reason, or PII onchain.
-4. A policy-enforcing vault or HSM verifies finalised approval, scope, expiry, and one-use status.
-5. Two custodians release shares into a restricted, non-exportable session.
-6. The authorised reviewer receives temporary plaintext access for that member only.
-7. Close the session, discard plaintext and reconstructed keys, sign an access-event receipt, and periodically anchor the private log's Merkle root through EAS.
+## 6. Exceptional access
 
-A Safe transaction proves that access was authorised; it does not prove that the vault enforced the scope or that plaintext was actually viewed. HSM enforcement, non-exportable shares, per-record controls, and tamper-evident logs are therefore essential.
+Private capsule access requires a member-specific purpose, narrow scope, expiry, two independent approvals through a dedicated 2-of-3 Safe, and enforcement by a policy-aware vault or HSM. EAS records only a random request commitment and audit-log root.
 
 ```mermaid
 sequenceDiagram
-    participant R as Authorised requester
+    participant R as Authorised reviewer
     participant S as 2-of-3 Safe
     participant E as EAS
-    participant V as Policy vault or HSM
+    participant V as Policy vault
     participant C as Custodians
-    participant A as Private audit log
 
-    R->>A: Create member-specific request, purpose, scope, and expiry
-    R->>S: Submit random request commitment
-    S->>S: Two independent approvals
-    S->>E: Attest approval commitment and expiry
-    V->>E: Verify finalised, unused approval
-    V->>C: Request two authorised shares
-    C->>V: Release into restricted session
-    V-->>R: Temporary one-member plaintext view
-    V->>A: Signed access-event receipt
-    A->>E: Periodic Merkle log-root attestation
+    R->>S: Submit scoped request commitment and expiry
+    S->>E: Record two-party approval
+    V->>E: Verify finalised and unused approval
+    V->>C: Request two key shares for one capsule
+    C->>V: Release into non-exportable session
+    V-->>R: Temporary plaintext view
+    V->>V: Destroy plaintext and reconstructed key
+    V->>E: Anchor private signed log root
 ```
 
-## Member-controlled deletion and re-entry
+A Safe transaction proves approval, not correct viewing. HSM enforcement, non-exportable shares, per-record controls, and signed private logs remain mandatory.
 
-An authenticated member may request deletion without a custodian vote or Safe approval. A robust lost-wallet recovery path must also exist.
+## 7. Deletion and re-entry
 
-Deletion deliberately separates **membership access** from **asset control**:
+An authenticated member may request deletion without a custodian vote or Safe approval. The system closes active capsule sessions, cryptographically erases keys and backups, deletes shares and indexes, and revokes membership access.
 
-- It does **not** freeze, seize, move, burn, or lock the member's funds.
-- It does **not** revoke the member's wallet keys or call token contracts.
-- Existing funds remain under the user's control and remain transferable wherever the underlying asset permits it.
-- It does revoke or restrict the membership credential, so applications that require active membership must deny login, eligibility, voting, governance, or other protected Tibetan ecosystem services.
+Deletion or a future CTA-triggered membership revocation:
 
-The system then destroys the member-specific decryption key and backups, instructs all custodians to delete shares, replicas, indexes, and backup copies, and issues signed erasure receipts. Any lawful retention exception must be documented. Previously disclosed or copied information cannot be recalled.
+- restricts login, eligibility, voting, governance, and other services that require active membership;
+- does not freeze, seize, move, burn, or lock funds;
+- does not revoke wallet keys or call token contracts.
 
-To regain access after deletion, the former member uses the invitation/vouch path through an eligible green book holder. That re-entry path does not require the former member to present a green or blue book or a ZKPassport proof. It issues a fresh member secret and commitment; the inviter supplies the first vouch, and further distinct green book holders can increase standing up to five.
+The former member may re-enter through a new invite from an eligible Green Book holder. This requires no Green Book, Blue Book, or ZKPassport proof from the returning person. Re-entry creates a fresh, unlinkable member secret and commitment, and the inviter supplies the first vouch.
+
+```typescript
+expect(await deleteMembership(member)).not.toCall(token.transferFrom);
+expect(await deleteMembership(member)).not.toCall(token.freeze);
+expect(await deleteMembership(member)).toRevoke("protected_ecosystem_access");
+
+expect(await reenter({ validGreenBookHolderInvite: true }))
+  .toRequire({ book: false, zkPassport: false })
+  .and.toIssue({ freshMemberCommitment: true, standing: 1 });
+```
 
 ```mermaid
 flowchart TD
-    A[Member requests deletion] --> B[Authenticate member or use robust recovery]
-    B --> C[Cancel pending PII releases and close live review sessions]
-    C --> D[Revoke membership attestation and ecosystem credential]
-    D --> E[Destroy member-specific decryption keys and backups]
-    E --> F[Custodians delete shares, replicas, indexes, and backup copies]
-    F --> G[Issue signed private receipts and non-identifying EAS erasure commitment]
+    A{Revocation trigger} -->|Member deletion request| B[Revoke membership and erase capsule material]
+    A -->|Validated CTA status after due process| C[Revoke membership only]
+    B --> D[Restrict protected ecosystem services]
+    C --> D
+    B --> E[Signed private deletion receipts and non-identifying EAS receipt]
+    D --> F[Wallet keys and funds remain untouched]
 
-    D --> H[Protected ecosystem access is restricted]
-    D --> I[Wallet and funds remain untouched]
-
-    H --> J[Eligible green book holder issues a new invite]
-    J --> K[Former member re-enters without book evidence or ZKPassport]
-    K --> L[Issue fresh secret and unlinkable member commitment]
-    L --> M[Additional distinct vouches raise standing, maximum 5]
+    D --> G[New invite from eligible Green Book holder]
+    G --> H[No book or ZKPassport required]
+    H --> I[Fresh unlinkable membership commitment]
+    I --> J[Distinct vouches raise standing to maximum 5]
 ```
 
-## Data lifecycle
+## 8. Implementation work
 
-| Data | Location | Retention rule |
-| --- | --- | --- |
-| Green or blue book photo | Temporary encrypted review area | Delete after the review and appeal window unless law requires otherwise |
-| ZKPassport proof material | Transient verifier memory or short-lived encrypted evidence store | Keep only the minimum audit result; do not retain source identity data |
-| Invite code | Private invite service | Single use, short expiry, delete after redemption or expiry |
-| Minimal identity capsule | Encrypted private storage with 2-of-3 custody | Keep only while justified; cryptographically erase on valid deletion |
-| Membership status | EAS | Pseudonymous and revocable; past chain history cannot be erased |
-| Vouch state | EAS plus private anti-abuse service where needed | Pairwise nullifier and capped count only; no public social graph |
-| Access details | Private tamper-evident audit log | Retain under an approved schedule; anchor only a Merkle root onchain |
-| Deletion evidence | Signed private receipts plus EAS commitment | No identifying information in the public receipt |
+Before launch, the project needs executable contracts and tests for every invariant above, a formal threat model, final EAS schemas and resolver rules, chain selection, anonymous credential design, CTA and custodian agreements, appeal and recovery policies, retention schedules, a privacy impact assessment, and independent legal and security reviews.
 
-## Security and governance requirements
+## 9. References
 
-- Complete a privacy impact assessment and independent security review before launch.
-- Specify lawful bases, retention periods, appeal handling, and jurisdiction-specific obligations.
-- Separate enrollment, attestation, custody, and application-gating duties.
-- Use threshold controls for administration and schema-resolver upgrades.
-- Rotate custodian keys and test recovery without using real member data.
-- Rate-limit invites and vouches; detect coercion, sale, collusion, and compromised green book holder credentials.
-- Make standing rules transparent and provide a private correction or appeal process.
-- Ensure deletion is idempotent, observable to the member, and covered by backup-erasure procedures.
-- Treat public-chain metadata, timing, gas sponsorship, and relayer logs as privacy-sensitive.
-
-## Implementation status
-
-This repository currently documents the target architecture. Before implementation, the project still needs a formal threat model, final EAS schemas and resolver rules, chain selection, anonymous credential design, custodian agreements, retention schedule, recovery policy, and independent legal and security review.
-
-## References
-
+- [CTA: Green Book Online Application Portal](https://tibet.net/official-announcement-department-of-finance-launches-green-book-online-application-portal/)
+- [CTA: Greenbook Digital Portal](https://greenbook.tibet.net/)
+- [CTA: Friends of Tibet and the Blue Book](https://tibet.net/support-tibet/friends-of-tibet/)
 - [GitHub documentation: Mermaid diagrams in Markdown](https://docs.github.com/en/get-started/writing-on-github/working-with-advanced-formatting/creating-diagrams)
 - [Ethereum Attestation Service contracts](https://github.com/ethereum-attestation-service/eas-contracts)
-- [Ethereum Attestation Service schema concepts](https://github.com/ethereum-attestation-service/eas-docs-site/blob/main/docs/core--concepts/schemas.md)
 - [ZKPassport](https://zkpassport.id/)
