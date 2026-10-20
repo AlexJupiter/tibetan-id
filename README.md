@@ -8,59 +8,46 @@ Privacy-preserving membership architecture for the New Tibet ecosystem.
 ## Master membership flow
 
 ```mermaid
-flowchart LR
-    subgraph U["Applicant or member"]
-        direction TB
-        U0{Choose entry route}
-        U0 -->|1. Green Book| U1[Upload book evidence and complete ZKPassport]
-        U0 -->|2. Blue Book| U2[Upload book evidence and complete ZKPassport]
-        U0 -->|3. Green Book invite| U3[Redeem invite code]
-        U0 -->|4. TIBET holder| U4[Connect wallet]
-        U5[Add further Green Book vouches]
-        U6[Request deletion]
-    end
+flowchart TD
+    A[Applicant chooses entry route] --> B{Entry route}
 
-    subgraph F["Foundation verifier — book routes only"]
-        direction TB
-        F1[Request 2-of-3 shard access]
-        F2[Portal reconstructs case in isolated session]
-        F3[Review book PII and ZK result]
-        F4[Foundation wallet records decision]
-        F1 --> F2 --> F3 --> F4
-    end
+    B -->|1. Green Book| C[Applicant uploads Green Book evidence]
+    B -->|2. Blue Book| D[Applicant uploads Blue Book evidence]
+    C --> E[Applicant completes ZKPassport proof]
+    D --> E
+    E --> F{Over 18 equals true?}
+    F -->|No| F0[Stop: age requirement not met]
+    F -->|Yes| G[Portal encrypts and splits case into 3 shards]
+    G --> H[Foundation verifier reconstructs 2 shards and reviews PII]
+    H --> I{Approved?}
+    I -->|No| I0[Stop: book verification not approved]
+    I -->|Yes| J[Foundation wallet records timestamped EAS membership]
 
-    subgraph P["Membership protocol"]
-        direction TB
-        P1{Over 18 and approved?}
-        P2[Timestamped EAS membership attestation]
-        P3[Issue non-transferable membership token]
-        P4[Invite-only profile and first vouch]
-        P5[Wallet tab only]
-        P6[Update standing up to policy cap]
-        P7[Restrict membership access; never freeze funds]
-        P1 -->|Yes| P2 --> P3
-        P4 --> P2
-    end
+    B -->|3. Green Book invite| K[Applicant redeems single-use invite]
+    K --> L{Registry validates eligible inviter?}
+    L -->|No| L0[Stop: invite invalid]
+    L -->|Yes| M[Registry records first vouch and timestamped EAS membership]
 
-    U1 --> F1
-    U2 --> F1
-    F4 --> P1
-    P1 -->|No| PX[Application cannot continue]
-    U3 --> P4
-    U4 --> P5
-    P3 --> U5 --> P6
-    U6 --> P7
-    CTA[Possible future CTA status] --> P7
+    B -->|4. TIBET holder| N[Connect wallet and open Wallet tab only]
+
+    J --> O[Issue soulbound token and book-verified profile]
+    M --> P[Issue soulbound token and Invite-only profile]
+    O --> Q[Member may add distinct Green Book vouches]
+    P --> Q
+    P --> R[Optional ZKPassport verified status]
+    Q --> S[Update community standing under policy cap]
+    O --> T[Later deletion or valid revocation]
+    P --> T
+    T --> U[Restrict membership access; never freeze funds]
 ```
 
 **Contents**
 
 1. [User types and access](#1-user-types-and-access)
-2. [Books and proof of personhood](#2-books-and-proof-of-personhood)
-3. [Admission, vouches, and standing](#3-admission-vouches-and-standing)
-4. [Foundation Verification Portal and custody](#4-foundation-verification-portal-and-custody)
-5. [Onchain records, token, and public attributes](#5-onchain-records-token-and-public-attributes)
-6. [Deletion, revocation, and future CTA integration](#6-deletion-revocation-and-future-cta-integration)
+2. [Books, admission, and community standing](#2-books-admission-and-community-standing)
+3. [Foundation Verification Portal and custody](#3-foundation-verification-portal-and-custody)
+4. [Onchain records, token, and public attributes](#4-onchain-records-token-and-public-attributes)
+5. [Deletion, revocation, and future CTA integration](#5-deletion-revocation-and-future-cta-integration)
 
 ## 1. User types and access
 
@@ -85,16 +72,25 @@ flowchart TD
 
 Holding `$TIBET` does not confer membership. Conversely, restricting or deleting membership cannot freeze, move, seize, burn, or lock assets in the user's wallet.
 
-## 2. Books and proof of personhood
+## 2. Books, admission, and community standing
 
 ```mermaid
 flowchart TD
-    A[Green Book: Tibetans] --> C[Book evidence plus ZKPassport]
-    B[Blue Book: Tibetan supporters] --> C
-    C --> D{Proof returns over 18 equals true?}
-    D -->|No| E[Application cannot continue]
-    D -->|Yes| F[Foundation book review]
-    G[Invite-only route] --> H[No book, passport, or ZKPassport required]
+    A{Admission route} -->|1. Green Book| B[Upload Green Book evidence]
+    A -->|2. Blue Book| C[Upload Blue Book evidence]
+    A -->|3. Green Book invite| D[Redeem single-use invite]
+    B --> E[Complete ZKPassport proof]
+    C --> E
+    E --> F{Over 18 equals true?}
+    F -->|No| G[Application cannot continue]
+    F -->|Yes| H[Foundation book review]
+    H --> I[Green or Blue Book verified profile]
+    D --> J[Registry validates inviter; no Foundation review]
+    J --> K[Invite-only profile and first vouch]
+    I --> L[May add distinct Green Book holder vouches]
+    K --> L
+    K --> M[May optionally add ZKPassport verified status]
+    L --> N[Community standing under adjustable policy cap]
 ```
 
 The CTA Green Book records voluntary contributions by Tibetans. The Blue Book, or Tibetan Solidarity Partnership, is for friends and supporters of Tibet. Tibetan ID uses these as two different membership bases; this is not a claim of CTA endorsement.
@@ -110,21 +106,6 @@ ZKPassport does not prove that a book is genuine or belongs to the passport hold
 No name, birth date, passport number, address, photograph, or raw passport data is retained from ZKPassport. Tibetan ID is an 18+ service: a false, missing, or failed over-18 result stops a ZKPassport-based application.
 
 An invite-only applicant does not need a passport or ZKPassport and instead declares that they are at least 18. This cannot guarantee age, but a later ZKPassport result that fails the over-18 rule prevents continued membership.
-
-## 3. Admission, vouches, and standing
-
-```mermaid
-flowchart TD
-    A{Admission route} -->|1. Green Book| B[Book and ZK verified profile]
-    A -->|2. Blue Book| C[Book and ZK verified profile]
-    A -->|3. Green Book invite| D[Invite-only profile with first vouch]
-    B --> E[May receive more Green Book vouches]
-    C --> E
-    D --> E
-    D --> F[May optionally add ZKPassport verified status]
-    E --> G[Count distinct eligible Green Book holders]
-    G --> H[Community standing under adjustable cap]
-```
 
 **Book routes**
 
@@ -142,7 +123,7 @@ Green Book verified, Blue Book verified, and invite-only members may add codes f
 
 Five counted vouches is only an initial idea. Governance may adjust or remove the cap, so it must be versioned rather than permanently embedded in the identity.
 
-## 4. Foundation Verification Portal and custody
+## 3. Foundation Verification Portal and custody
 
 ```mermaid
 flowchart TD
@@ -175,7 +156,7 @@ Possible custodians include the Foundation security team, a separately governed 
 
 Safeguards include view-only watermarked sessions; downloads, printing, clipboard, and export disabled by default; encryption in transit and at rest; independent shard administration; no trackers or model training; fixed retention and tested erasure; and two-person approval for exceptional exports. Every request, approval, reconstruction, decision, export, and closure is timestamped on EAS using high-entropy case commitments—never PII.
 
-## 5. Onchain records, token, and public attributes
+## 4. Onchain records, token, and public attributes
 
 ```mermaid
 flowchart TD
@@ -205,7 +186,7 @@ Each approved book application or valid invite also receives a non-transferable 
 
 Country and the over-18 flag may appear publicly only with separate consent. Exact country should remain hidden until a configurable cohort threshold is met; before then, show a broad region or `Withheld for privacy`. Use delayed batch publication and apply the threshold to combinations such as country, age flag, verification basis, and joining period. By default, EAS stores only a commitment to these attributes so later withdrawal remains meaningful.
 
-## 6. Deletion, revocation, and future CTA integration
+## 5. Deletion, revocation, and future CTA integration
 
 ```mermaid
 flowchart TD
