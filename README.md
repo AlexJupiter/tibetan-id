@@ -73,16 +73,19 @@ The retained ZKPassport results are limited to:
 
 No name, exact date of birth, passport number, address, photograph, or raw passport data is received from ZKPassport.
 
+Tibetan ID is an 18+ application. On a ZKPassport path, the proof must return `over 18 = true`; a false, missing, or failed result stops the application. Invite-only applicants must declare that they are 18 or older because they are not required to use ZKPassport. This cannot guarantee that every applicant is an adult, but any later ZKPassport result showing that the person is not over 18 prevents them from continuing as a member.
+
 ## 3. Admission paths
 
 ### 3.1 Green Book or Blue Book path
 
 1. The applicant creates a one-time application session.
-2. The applicant securely uploads the Green Book or Blue Book information required for review.
-3. The applicant completes a ZKPassport proof bound to the same session.
-4. A trusted Foundation verifier reviews the book evidence and the proof-of-personhood result in the Foundation Verification Portal.
-5. If approved, a trusted Foundation wallet records a privacy-minimised EAS attestation and issues a pseudonymous membership credential.
-6. Audit-grade evidence moves into the encrypted verification dossier. Temporary copies are erased.
+2. The applicant securely uploads the Green Book or Blue Book information required for review. The portal encrypts it and separates it into three shards.
+3. The applicant completes a ZKPassport proof bound to the same session. The application continues only when `over 18 = true`.
+4. The verifier opens an assigned case; after 2-of-3 approval, the portal temporarily merges two shards inside the isolated review session so the verifier can view the PII.
+5. The verifier reviews the book evidence and proof-of-personhood result, then approves, rejects, or requests step-up review.
+6. If approved, a trusted Foundation wallet records the verification and its timestamp in EAS. A non-transferable membership soulbound token is issued to the applicant's chosen membership wallet.
+7. The review session is destroyed and the dossier returns to separately held shards.
 
 ### 3.2 Green Book holder invitation path
 
@@ -91,7 +94,8 @@ No name, exact date of birth, passport number, address, photograph, or raw passp
 3. The service verifies that the issuer is a currently eligible Green Book holder and that the code is unused and unexpired.
 4. The applicant does not need a Green Book, Blue Book, passport, or ZKPassport proof.
 5. The code is consumed, the inviter supplies the first vouch, and the profile is marked `Invite-only`.
-6. A trusted Foundation wallet records a sponsored membership attestation and issues a pseudonymous credential.
+6. The membership registry automatically records the sponsored EAS attestation and timestamp and issues the soulbound token. Foundation review or approval is not involved.
+7. The member may later add more distinct Green Book holder invite codes or optionally add ZKPassport-verified status.
 
 This path is important for Tibetans who need to remain anonymous, may face personal or political risk if they upload book-linked information, do not have a passport, or do not have access to a compatible NFC document or device. It creates a community-supported route into the application without publicly asserting a government or book-backed identity.
 
@@ -105,74 +109,66 @@ flowchart TD
     B -->|Blue Book| D[Securely upload Blue Book evidence]
     C --> E[Complete session-bound ZKPassport proof]
     D --> E
-    E --> F[Foundation verifier reviews evidence and proof of personhood]
+    E --> F{Over 18 equals true?}
+    F -->|No| L[Application cannot continue]
+    F -->|Yes| R[Portal obtains 2-of-3 approval and merges two shards]
+    R --> S[Foundation verifier reviews evidence and PII]
+    S --> T{Book application approved?}
+    T -->|No| L
+    T -->|Yes| U[Foundation wallet records timestamped EAS verification]
+    U --> V[Issue membership soulbound token]
+    V --> W[Destroy review copy and separate shards]
 
     B -->|Invite code| G[Applicant enters Green Book holder invite]
     G --> H[Validate issuer, expiry, and single use]
     H --> I[No book, passport, or ZKPassport required]
-    I --> J[Prepare Invite-only membership with first vouch]
+    I --> J[Contract consumes code and records first vouch]
+    J --> M[Registry records timestamped sponsored EAS attestation]
+    M --> N[Issue soulbound token and Invite-only profile]
 
-    F --> K{Approved?}
-    J --> K
-    K -->|No| L[Reject, request correction, or step-up review]
-    K -->|Yes| M[Trusted Foundation wallet issues EAS attestation]
-    M --> N[Issue credential and profile with admission basis]
-    M --> O[Create encrypted verification dossier]
-
-    N --> P[Member may add more Green Book holder invite codes]
+    N --> P[Member may add more Green Book holder invite codes or optional ZKPassport status]
     P --> Q[Validate each distinct voucher and update standing]
 ```
 
 ## 4. Foundation Verification Portal
 
-The **Foundation Verification Portal** is proposed as a dedicated, self-hosted service under Foundation control. Applicants submit evidence there and authorised Foundation reviewers inspect personally identifiable information (PII). It is separate from the public application and the ordinary member database; a consumer cloud drive or third-party KYC dashboard is not the system of record.
+The **Foundation Verification Portal** is a dedicated, self-hosted case-review application under Foundation control. It has an applicant upload page, three independently administered shard stores, and an isolated reviewer workspace. It is not the public member application, a cloud drive, or a third-party KYC dashboard.
 
-### 4.1 Applicant side
+### 4.1 Concrete review flow
 
-1. The public application requests a short-lived case identifier from the portal.
-2. The applicant uploads evidence directly into an encrypted quarantine area using an expiring upload link.
-3. The application session binds the upload, ZKPassport challenge, and later decision together without exposing the applicant's ordinary wallet address.
-4. Files are scanned for malware inside the controlled environment and are not sent to consumer file-scanning, analytics, or AI services.
-5. The applicant can see the case status, provide corrections, and exercise deletion or appeal rights.
+1. The public application obtains a short-lived case ID and expiring upload link.
+2. An isolated ingestion worker scans the upload, hashes it, encrypts it, splits it into three cryptographic shards, writes each shard to a different custodian store, and erases the complete ingestion copy.
+3. A reviewer signs in with a hardware-backed credential and opens an assigned case. The portal writes a PII-free, timestamped `review requested` event to EAS.
+4. After two custodians approve, the reviewer's session causes the isolated workspace to retrieve and merge two shards in memory. Only then can the reviewer see the book PII, file metadata, ZKPassport receipt, tamper warnings, and prior permitted decisions.
+5. The reviewer approves, rejects, requests clearer evidence, or escalates to a second reviewer. EAS records the case commitment, outcome, policy version, verifier commitment, `verifiedAt` timestamp, and attestation time - never the PII.
+6. Closing the session wipes the merged data and records a timestamped `review closed` event on EAS. The three stored shards remain separate.
 
-### 4.2 Verifier side
+### 4.2 Safeguards
 
-An authorised verifier may view only the cases assigned to them. The review screen should show:
-
-- the original Green Book or Blue Book submission;
-- the information visible in that evidence that is needed to judge authenticity;
-- the ZKPassport proof-of-personhood receipt, country, and over-18 result;
-- image and file metadata, upload time, and cryptographic hashes;
-- automated tamper warnings, without using the evidence to train AI models;
-- prior decisions or duplicate indicators where policy permits; and
-- a structured decision form with reason codes and reviewer notes.
-
-The verifier approves, rejects, requests clearer evidence, or sends the case to step-up review. Suspicious or overridden cases require a second independent reviewer. The final approval is signed by a trusted Foundation wallet and linked to the EAS attestation.
-
-### 4.3 Data-protection safeguards
-
-- **Strong access control:** named accounts, phishing-resistant hardware keys or passkeys, least-privilege roles, no shared reviewer accounts, and rapid offboarding.
-- **Restricted review environment:** private network or zero-trust access, short sessions, no download or printing by default, visible case watermarks, and controlled export only with a recorded reason.
-- **Encryption:** TLS in transit, per-case encryption at rest, separately managed keys, encrypted backups, and regular key rotation.
-- **Auditability:** every view, change, export, decision, and exceptional access is timestamped and signed in a tamper-evident private log.
-- **Data minimisation:** no advertising analytics, third-party trackers, PII in application logs, or reuse of evidence for model training.
-- **Retention:** temporary upload copies are erased after ingestion. The audit dossier is retained only for the documented appeal, fraud-prevention, and legal period, then cryptographically erased unless a lawful exception applies.
-- **Operational safeguards:** periodic access reviews, incident response and breach notification procedures, processor agreements, backup-erasure testing, and an independent privacy and security assessment before launch.
-- **Human safeguards:** trained reviewers, confidentiality commitments, conflict-of-interest declarations, and two-person approval for unusual cases or raw-data export.
+- Named least-privilege reviewer accounts, hardware keys or passkeys, no shared accounts, and rapid offboarding.
+- A view-only, watermarked workspace with short sessions; download, print, clipboard, and export disabled by default.
+- TLS, per-case encryption, independent shard administration, encrypted backups, rotation, and tested erasure.
+- No trackers, advertising analytics, PII in operational logs, consumer scanning services, or model training with evidence.
+- Every access, reconstruction, decision, export, and closure logged onchain using high-entropy case commitments and timestamps, without PII.
+- Two-person approval for suspicious cases or exports, trained reviewers, access reviews, incident response, processor agreements, and fixed retention periods.
 
 ```mermaid
 flowchart LR
-    A[Applicant] -->|Expiring encrypted upload| B[Portal quarantine]
-    B --> C[Malware scan inside controlled environment]
-    C --> D[Assigned Foundation reviewer]
-    E[Session-bound ZKPassport receipt] --> D
-    D -->|Approve| F[Second review when risk rules require]
-    D -->|Correct| G[Applicant correction request]
-    D -->|Reject| H[Appeal path]
-    F --> I[Foundation wallet signs decision]
-    I --> J[EAS attestation with no PII]
-    I --> K[Encrypted verification dossier]
-    B -->|Erase temporary copy after ingestion| L[Deletion log]
+    A[Applicant upload] --> B[Isolated scan, hash, and encryption]
+    B --> C[Split into 3 shards]
+    C --> D[Custodian store A]
+    C --> E[Custodian store B]
+    C --> F[Custodian store C]
+    G[Assigned reviewer requests access] --> H[EAS timestamped access log]
+    H --> I[Two custodians approve]
+    D --> J[Isolated review workspace merges any 2 shards]
+    E --> J
+    F --> J
+    I --> J
+    J --> K[Reviewer views PII and records decision]
+    K --> L[EAS timestamped verification log]
+    L --> M[Wipe merged copy; shards remain separate]
+    M --> N[EAS timestamped close log]
 ```
 
 ## 5. Encrypted verification dossier
@@ -186,13 +182,13 @@ The earlier minimal identity-capsule concept is insufficient for later fraud rev
 - Book type and the fields necessary for verification, such as the visible holder details, book identifier, issuing office, status markers, and other authenticity indicators actually present on the document.
 - ZKPassport verification receipt: successful proof of personhood, country, over-18 result, session challenge, verification time, and verifier or circuit version. No raw passport data.
 - Reviewer identity, review times, reason codes, notes, fraud indicators, and any second-review decision.
-- The final membership class, policy version, credential identifier, and EAS attestation UID.
-- Consumed invite commitments, vouch receipts, and revocation or appeal history.
+- The final membership class, policy version, `submittedAt` and `verifiedAt` times, EAS attestation UID, and soulbound-token ID.
+- Book-verification revocation, correction, and appeal history.
 - Step-up review material only when necessary, separately labelled and given a shorter retention period where possible.
 
 ### 5.2 Why it is auditable
 
-With authorised 2-of-3 access, an independent auditor can compare the original evidence with the recorded decision, verify that the files have not changed, check which reviewer saw them, confirm the ZKPassport receipt and policy version, and reconcile the result with the onchain attestation.
+With authorised 2-of-3 reconstruction, an independent auditor can compare the original evidence with the recorded decision, verify that the files have not changed, check which reviewer saw them, confirm the ZKPassport receipt and policy version, and reconcile the result and timestamps with the onchain logs and attestation.
 
 The dossier is deliberately more complete than the public profile. Its existence increases privacy risk, so access, retention, key separation, and deletion must be treated as core security controls rather than administrative details.
 
@@ -209,13 +205,20 @@ Tibetan ID uses two separate trust dimensions so that book verification and comm
 | Green Book verified | Foundation verified Green Book evidence plus ZKPassport proof of personhood. |
 | Blue Book verified | Foundation verified Blue Book evidence plus ZKPassport proof of personhood. |
 
-### 6.2 Community web of trust
+### 6.2 Optional ZKPassport status outside the book route
+
+An Invite-only member may optionally complete ZKPassport verification to add a unique `ZKPassport verified` status to their profile. The proof can be verified by the application or an onchain verifier without Foundation review. It adds personhood confidence but does not change the admission basis from `Invite-only` to book-verified.
+
+The optional proof must return `over 18 = true`; otherwise the member cannot continue. Country and the over-18 flag follow the public-display safeguards in section 7.2.
+
+### 6.3 Community web of trust
 
 Every sponsored, Green Book verified, or Blue Book verified member may add further invite codes issued by distinct eligible Green Book holders. Each accepted code adds one vouch to the profile. Blue Book holders may receive vouches but cannot issue them.
 
 The public profile should show the verification basis and vouch count separately, for example:
 
 - `Invite-only · 3 Green Book holder vouches`
+- `Invite-only · ZKPassport verified · 3 Green Book holder vouches`
 - `Green Book verified · 2 Green Book holder vouches`
 - `Blue Book verified · 4 Green Book holder vouches`
 
@@ -231,6 +234,7 @@ flowchart TD
     B --> D[Invite-only]
     B --> E[Green Book verified]
     B --> F[Blue Book verified]
+    D --> X[Optional ZKPassport verified status]
 
     C --> G[Enter another Green Book holder invite code]
     G --> H[Check issuer is eligible and distinct]
@@ -240,19 +244,25 @@ flowchart TD
 
 ## 7. Onchain records and public attributes
 
-Ethereum Attestation Service (EAS) is the public integrity and revocation layer, not the PII database. The trusted Foundation wallet or another authorised verifier may issue attestations.
+Ethereum Attestation Service (EAS) is the public integrity, timestamp, and revocation layer, not the PII database. The Foundation wallet issues book-verification attestations. Invite redemption and vouches are recorded by the membership registry from participant-signed actions, without Foundation approval.
 
 | EAS record | Public contents |
 | --- | --- |
-| Membership status | High-entropy member commitment, active/restricted/revoked state, verification basis, standing, policy version, and salted dossier commitment |
-| Vouch | Member commitment, pairwise voucher identifier, and policy version |
-| Access approval | Random request commitment and expiry |
-| Audit anchor | Merkle root of the private access log |
+| Membership status | High-entropy member commitment, active/restricted/revoked state, verification basis, standing, policy version, salted dossier commitment when applicable, explicit `verifiedAt`, and the EAS attestation timestamp |
+| Vouch | Member commitment, pairwise voucher identifier, policy version, and timestamp |
+| Verification log | Case commitment, verifier or registry commitment, decision, policy version, `verifiedAt`, and attestation timestamp |
+| Review-access log | Case commitment, requested/opened/closed event, purpose commitment, approval reference, and timestamp |
 | Deletion receipt | Fresh, non-identifying erasure commitment |
 
 EAS must never contain names, contact details, wallet-to-person mappings, book or passport numbers, images, invite codes, raw ZK proofs, dossier locations, or low-entropy hashes of those values.
 
-### 7.1 Country and over-18 status
+### 7.1 Soulbound membership token
+
+In addition to the EAS records, successful book verification or valid invite redemption issues a non-transferable membership soulbound token to the user's chosen membership wallet. The token references the current EAS membership attestation and contains no PII, book number, country, or age data. Revoking membership revokes or invalidates the token but does not affect other assets in the wallet.
+
+The token makes the link between that wallet and a pseudonymous membership public. Members who need stronger separation should use a dedicated membership wallet and must be warned that blockchain analysis can still create correlations.
+
+### 7.2 Country and over-18 status
 
 Country and the over-18 flag are the only ZKPassport attributes eligible for public display. Exact country can nevertheless identify a person by inference during the early stages - for example, if the community knows that only one member is based in the United Kingdom.
 
@@ -265,7 +275,7 @@ Safeguards should therefore include:
 5. **Delayed batching:** publish changes in batches so joining time cannot easily be matched to a particular applicant.
 6. **No default onchain disclosure:** store a commitment in EAS and reveal the attributes through the application only after the privacy gate passes. Putting exact country directly onchain would make later withdrawal impossible.
 7. **User withdrawal:** a member may stop future application display, while being clearly warned that already public third-party copies cannot be recalled.
-8. **No wallet linkage:** public attribute profiles use pseudonymous member identifiers, not ordinary wallet addresses.
+8. **Profile separation:** the application does not automatically display country and age beside the wallet address, even though the membership soulbound token is visible onchain.
 
 The over-18 flag may be less identifying than country, but it is still evaluated as part of the combined privacy threshold.
 
@@ -282,7 +292,7 @@ flowchart TD
 
 ## 8. Threshold custody and exceptional access
 
-Each dossier is encrypted with a unique data key. The decryption key is split into three shares; any authorised two can reconstruct it, while one share alone is useless. The plaintext dossier is not copied to all custodians.
+Each case and dossier is encrypted and split into three cryptographic data shards. Any authorised two shards can reconstruct the encrypted dossier; one shard alone is useless. Outside an approved review or audit session, the shards remain in separate custodian stores and no complete dossier exists in the reviewer portal.
 
 Possible custodians, given only as examples, are:
 
@@ -290,30 +300,28 @@ Possible custodians, given only as examples, are:
 - **Custodian B:** a separately governed Tibetan cultural, community, or administrative institution; and
 - **Custodian C:** an independent professional security trustee, such as a regulated Swiss custody provider or specialist HSM operator.
 
-Reconstruction requires a member-specific purpose, narrow scope, expiry, two independent Safe approvals, and enforcement by a policy-aware vault or HSM. After review, reconstructed material is destroyed and a signed audit receipt is added to the private log.
+Reconstruction requires a member-specific purpose, narrow scope, expiry, two independent Safe approvals, and enforcement by a policy-aware vault or HSM. The authorised reviewer's portal session performs the merge inside an isolated workspace. Request, approval, reconstruction, decision, and closure events are logged onchain with timestamps and high-entropy commitments but no PII. After review, the merged material is destroyed.
 
 ```mermaid
 flowchart TD
-    A[Encrypted verification dossier] --> B[Private encrypted storage]
-    A --> C[Unique dossier decryption key]
-    C --> D[Split key into 3 cryptographic shares]
-    D --> E[Share A: Foundation example]
-    D --> F[Share B: independent Tibetan institution example]
-    D --> G[Share C: independent security trustee example]
+    A[Encrypted verification dossier] --> D[Split encrypted data into 3 cryptographic shards]
+    D --> E[Shard A: Foundation example]
+    D --> F[Shard B: independent Tibetan institution example]
+    D --> G[Shard C: independent security trustee example]
 
     H[Scoped access request] --> I[2-of-3 Safe approval with purpose and expiry]
-    I --> J[Policy vault validates approval]
-    E --> K{At least 2 approved shares present?}
+    H --> R[EAS timestamped request log]
+    I --> J[Policy vault validates approval and logs it on EAS]
+    E --> K{At least 2 approved shards present?}
     F --> K
     G --> K
     J --> K
     K -->|No| L[Deny access]
-    K -->|Yes| M[Temporarily reconstruct dossier key]
-    B --> N[Decrypt one dossier in restricted session]
-    M --> N
+    K -->|Yes| M[Reviewer session merges 2 shards in isolated workspace]
+    M --> N[Decrypt one dossier in memory]
     N --> O[Authorised auditor or reviewer]
-    O --> P[Destroy plaintext and reconstructed key]
-    P --> Q[Signed audit receipt and log-root anchor]
+    O --> P[Destroy plaintext and merged dossier]
+    P --> Q[EAS timestamped decision and close logs]
 ```
 
 ## 9. Future CTA integration
@@ -324,7 +332,7 @@ A verified revoked status could cause the corresponding membership credential an
 
 ## 10. Deletion, revocation, and re-entry
 
-An authenticated member may request deletion without a custodian vote or Safe approval. The system closes active sessions, destroys dossier keys and backups, instructs custodians to delete shares, removes replicas and indexes, and revokes the membership credential, subject to documented lawful-retention exceptions.
+An authenticated member may request deletion without a custodian vote or Safe approval. The system closes active sessions, deletes dossier shards and backups, removes replicas and indexes, revokes the EAS membership status, and invalidates the soulbound token, subject to documented lawful-retention exceptions.
 
 Member-requested deletion and CTA-triggered membership revocation both restrict services that require active membership. Neither action:
 
@@ -342,8 +350,8 @@ Before launch, the project needs:
 
 - a formal data-flow and threat model for the Foundation Verification Portal;
 - final evidence fields and retention periods for the verification dossier;
-- final EAS schemas, resolver rules, and verifier-wallet governance;
-- executable tests for wallet-only gating, admission, vouching, privacy thresholds, revocation, and non-interference with funds;
+- final timestamped EAS schemas, access-log events, resolver rules, soulbound-token behavior, and verifier-wallet governance;
+- executable tests for wallet-only gating, the over-18 requirement, Foundation-free invite/vouch flows, optional ZKPassport status, privacy thresholds, revocation, and non-interference with funds;
 - custodian agreements and tested key-recovery and key-erasure procedures;
 - appeal, correction, lost-wallet, and step-up review policies;
 - a data-protection impact assessment and jurisdictional legal review; and
