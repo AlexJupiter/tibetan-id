@@ -37,7 +37,7 @@ flowchart TD
     P --> Q
     P --> R[Optional ZKPassport verified status]
     Q --> S[Increase submission trustworthiness and community standing]
-    O --> T[Later deletion or valid revocation]
+    O --> T[Possible later membership revocation]
     P --> T
     T --> U[Restrict membership access; never freeze funds]
 ```
@@ -48,7 +48,7 @@ flowchart TD
 2. [Books, admission, and community standing](#2-books-admission-and-community-standing)
 3. [Foundation Verification Portal and deletion](#3-foundation-verification-portal-and-deletion)
 4. [Onchain records, token, and public attributes](#4-onchain-records-token-and-public-attributes)
-5. [Deletion, revocation, and future CTA integration](#5-deletion-revocation-and-future-cta-integration)
+5. [Revocation and future CTA integration](#5-revocation-and-future-cta-integration)
 
 ## 1. User types and access
 
@@ -71,7 +71,7 @@ flowchart TD
 | **Sponsored member** | Single-use invite from an eligible Green Book holder | Membership access under current policy; profile remains `Invite-only`. |
 | **`$TIBET` coin holder** | Connects a wallet holding `$TIBET` | Wallet tab only; no membership areas, voting, directory, invites, or vouching. |
 
-Holding `$TIBET` does not confer membership. Conversely, restricting or deleting membership cannot freeze, move, seize, burn, or lock assets in the user's wallet.
+Holding `$TIBET` does not confer membership. Conversely, restricting or revoking membership cannot freeze, move, seize, burn, or lock assets in the user's wallet.
 
 ## 2. Books, admission, and community standing
 
@@ -178,7 +178,6 @@ Ethereum Attestation Service (EAS) is the public integrity, timestamp, and revoc
 | Membership | Member commitment, active/restricted/revoked state, basis, standing, policy version, `verifiedAt`, and attestation time |
 | Vouch | Member commitment, pairwise voucher identifier, policy version, and timestamp |
 | Portal log | Random case commitment, request/decision/erasure event, policy version, and timestamp |
-| Deletion | Fresh, non-identifying membership-erasure commitment |
 
 EAS must never contain PII, book or passport numbers, images, invite codes, raw ZK proofs, evidence-storage locations, or low-entropy hashes of those values.
 
@@ -186,24 +185,26 @@ Each approved book application or valid invite also receives a non-transferable 
 
 Country and the over-18 flag may appear publicly only with separate consent. Exact country should remain hidden until a configurable cohort threshold is met; before then, show a broad region or `Withheld for privacy`. Use delayed batch publication and apply the threshold to combinations such as country, age flag, verification basis, and joining period. By default, EAS stores only a commitment to these attributes so later withdrawal remains meaningful.
 
-## 5. Deletion, revocation, and future CTA integration
+## 5. Revocation and future CTA integration
 
 ```mermaid
 flowchart TD
-    A{Membership status change} -->|User deletion request| B[Remove application profile and private account data]
-    A -->|Possible future CTA signed revocation| C[Review and appeal under policy]
-    B --> D[Revoke EAS membership and invalidate soulbound token]
-    C --> D
-    D --> E[Restrict membership-only ecosystem services]
-    E --> F[Wallet and funds remain untouched]
-    D --> G[May re-enter with a new eligible Green Book invite]
+    A[Possible future CTA signed status] --> B{Valid, revoked, or unknown?}
+    B -->|Valid or unknown| C[No automatic membership change]
+    B -->|Revoked| D[Review and appeal under policy]
+    D --> E{Revocation confirmed?}
+    E -->|No| C
+    E -->|Yes| F[Revoke EAS membership and invalidate soulbound token]
+    F --> G[Restrict membership-only ecosystem services]
+    G --> H[Wallet and funds remain untouched]
+    F --> I[May re-enter with a new eligible Green Book invite]
 ```
 
-Verification evidence is already erased after the initial decision. A member may later request deletion of their remaining profile and private account data. The service closes sessions, removes private indexes, revokes the EAS membership, and invalidates the soulbound token. Immutable onchain records remain visible as revoked. Membership-only access is restricted, but funds are unaffected.
+After verification, only the privacy-minimised onchain membership record and token status remain. Later status changes therefore concern revocation rather than offchain evidence management.
 
 A future adapter might receive a minimal signed `valid`, `revoked`, or `unknown` status from the CTA's internal Green or Blue Book system. It should copy no CTA records. A confirmed revocation could restrict membership after review and appeal, but the adapter must have no permission in token, wallet, or treasury contracts.
 
-A deleted or revoked person may return through a new invite from an eligible Green Book holder. They need no book, passport, or ZKPassport for that route; the new profile is `Invite-only` and begins with the inviter's vouch. Blue Book holders cannot provide the invite.
+A revoked person may return through a new invite from an eligible Green Book holder. They need no book, passport, or ZKPassport for that route; the new profile is `Invite-only` and begins with the inviter's vouch. Blue Book holders cannot provide the invite.
 
 Before launch, the code and tests must demonstrate the over-18 gate, book-only Foundation authority, Foundation-free invites and vouches, the five-vouch cap, automatic evidence erasure including failure paths, timestamped EAS events, soulbound-token invalidation, privacy thresholds, re-entry, and non-interference with funds.
 
