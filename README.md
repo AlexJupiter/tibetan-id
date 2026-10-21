@@ -16,11 +16,11 @@ flowchart TD
     C --> E[Applicant completes ZKPassport proof]
     D --> E
     E --> F{Over 18 equals true?}
-    F -->|No| F0[Stop: age requirement not met]
-    F -->|Yes| G[Portal encrypts and splits case into 3 shards]
-    G --> H[Foundation verifier reconstructs 2 shards and reviews PII]
+    F -->|No| F0[Delete evidence; age requirement not met]
+    F -->|Yes| G[Portal holds evidence for one encrypted review session]
+    G --> H[Foundation verifier reviews book PII]
     H --> I{Approved?}
-    I -->|No| I0[Stop: book verification not approved]
+    I -->|No| I0[Delete evidence; application not approved]
     I -->|Yes| J[Foundation wallet records timestamped EAS membership]
 
     B -->|3. Green Book invite| K[Applicant redeems single-use invite]
@@ -30,12 +30,13 @@ flowchart TD
 
     B -->|4. TIBET holder| N[Connect wallet and open Wallet tab only]
 
-    J --> O[Issue soulbound token and book-verified profile]
+    J --> J0[Delete evidence and every temporary copy]
+    J0 --> O[Issue soulbound token and book-verified profile]
     M --> P[Issue soulbound token and Invite-only profile]
-    O --> Q[Member may add distinct Green Book vouches]
+    O --> Q[Member may add up to 5 distinct Green Book vouches]
     P --> Q
     P --> R[Optional ZKPassport verified status]
-    Q --> S[Update community standing under policy cap]
+    Q --> S[Increase submission trustworthiness and community standing]
     O --> T[Later deletion or valid revocation]
     P --> T
     T --> U[Restrict membership access; never freeze funds]
@@ -45,7 +46,7 @@ flowchart TD
 
 1. [User types and access](#1-user-types-and-access)
 2. [Books, admission, and community standing](#2-books-admission-and-community-standing)
-3. [Foundation Verification Portal and custody](#3-foundation-verification-portal-and-custody)
+3. [Foundation Verification Portal and deletion](#3-foundation-verification-portal-and-deletion)
 4. [Onchain records, token, and public attributes](#4-onchain-records-token-and-public-attributes)
 5. [Deletion, revocation, and future CTA integration](#5-deletion-revocation-and-future-cta-integration)
 
@@ -82,34 +83,37 @@ flowchart TD
     B --> E[Complete ZKPassport proof]
     C --> E
     E --> F{Over 18 equals true?}
-    F -->|No| G[Application cannot continue]
+    F -->|No| G[Delete evidence; application cannot continue]
     F -->|Yes| H[Foundation book review]
-    H --> I[Green or Blue Book verified profile]
+    H --> H0{Approved?}
+    H0 -->|No| H1[Delete evidence; application not approved]
+    H0 -->|Yes| I[Delete submitted evidence and temporary copies]
+    I --> O[Green or Blue Book verified profile]
     D --> J[Registry validates inviter; no Foundation review]
     J --> K[Invite-only profile and first vouch]
-    I --> L[May add distinct Green Book holder vouches]
+    O --> L[May add up to 5 distinct Green Book holder vouches]
     K --> L
     K --> M[May optionally add ZKPassport verified status]
-    L --> N[Community standing under adjustable policy cap]
+    L --> N[Increase trustworthiness and community standing]
 ```
 
 The CTA Green Book records voluntary contributions by Tibetans. The Blue Book, or Tibetan Solidarity Partnership, is for friends and supporters of Tibet. Tibetan ID uses these as two different membership bases; this is not a claim of CTA endorsement.
 
-For either book route, ZKPassport is an additional **proof-of-personhood** signal. It checks the cryptographic signature of a supported NFC passport or identity document, reducing the chance of synthetic or AI-generated applicants passing an image-based book process. This is useful because Green and Blue Book systems do not have the same cryptographic document infrastructure as many national passports.
+For either book route, ZKPassport is an additional **proof-of-personhood** signal. It checks a supported NFC passport or identity document, reducing the chance of synthetic or AI-generated applicants passing an image-based book process. Green and Blue Book systems lack the cryptographic document infrastructure of many national passports.
 
-ZKPassport does not prove that a book is genuine or belongs to the passport holder. The Foundation reviewer must still assess the book and bind both checks to one application session. The retained result is limited to:
+ZKPassport does not prove that a book is genuine or belongs to the passport holder. The Foundation reviewer must still assess the book and bind both checks to one application session. The proof discloses only:
 
 - proof-of-personhood success;
 - country; and
 - `over 18 = true`.
 
-No name, birth date, passport number, address, photograph, or raw passport data is retained from ZKPassport. Tibetan ID is an 18+ service: a false, missing, or failed over-18 result stops a ZKPassport-based application.
+No name, birth date, passport number, address, photograph, or raw passport data is received from ZKPassport. The proof is deleted after review; country or over-18 status remains only when separately consented for public display. Tibetan ID is an 18+ service: a false, missing, or failed over-18 result stops the application.
 
 An invite-only applicant does not need a passport or ZKPassport and instead declares that they are at least 18. This cannot guarantee age, but a later ZKPassport result that fails the over-18 rule prevents continued membership.
 
 **Book routes**
 
-Green and Blue Book applicants upload evidence, complete the over-18 ZKPassport proof, and pass Foundation review. Approval produces the relevant verification basis: `Green Book verified` or `Blue Book verified`.
+Green and Blue Book applicants complete the ZK proof and Foundation review. Approval creates the relevant verified profile; all book evidence and working copies are then deleted.
 
 **Green Book invitation route**
 
@@ -119,42 +123,38 @@ This gives Tibetans who need anonymity, face political risk, lack a passport, or
 
 **Community standing**
 
-Green Book verified, Blue Book verified, and invite-only members may add codes from other distinct, eligible Green Book holders. Each accepted code adds one vouch. The profile shows the admission basis, optional ZK status, and vouch count separately; voucher identities and codes remain private.
+Green Book verified, Blue Book verified, and invite-only members may add codes from other distinct, eligible Green Book holders. Each accepted code adds one vouch and increases the trustworthiness of the original submission or invite-based profile. The profile shows the admission basis, optional ZK status, and vouch count separately; voucher identities and codes remain private.
 
-Five counted vouches is only an initial idea. Governance may adjust or remove the cap, so it must be versioned rather than permanently embedded in the identity.
+The current design counts a maximum of five distinct Green Book-holder vouches. This limit is a policy value that governance may adjust later, not a permanent identity claim.
 
-## 3. Foundation Verification Portal and custody
+## 3. Foundation Verification Portal and deletion
 
 ```mermaid
 flowchart TD
-    A[Applicant receives expiring upload link] --> B[Isolated worker scans, hashes, and encrypts evidence]
-    B --> C[Split encrypted case into 3 cryptographic shards]
-    C --> D[Custodian A]
-    C --> E[Custodian B]
-    C --> F[Custodian C]
-    G[Assigned Foundation reviewer requests access] --> H[EAS timestamped request log]
-    H --> I[Two custodians approve purpose and expiry]
-    D --> J{Any 2 approved shards available?}
-    E --> J
-    F --> J
+    A[Applicant receives expiring upload link] --> B[Encrypted temporary upload]
+    B --> C[Isolated scan and safe review rendition]
+    C --> D[Assigned Foundation reviewer opens live case]
+    D --> E[Reviewer views book PII and ZK result]
+    E --> F{Decision}
+    F -->|Reject or request resubmission| G[Record minimal outcome without PII]
+    F -->|Approve| H[Foundation wallet writes timestamped EAS verification]
+    H --> I[Issue soulbound membership token]
+    G --> J[Erase uploaded evidence and all processing artefacts]
     I --> J
-    J -->|No| K[Deny access]
-    J -->|Yes| L[Isolated workspace reconstructs case in memory]
-    L --> M[Reviewer views PII and records decision]
-    M --> N[Foundation wallet writes timestamped EAS verification]
-    N --> O[Wipe reconstructed copy; keep shards separate]
-    O --> P[EAS timestamped close log]
+    J --> K[Record PII-free erasure event]
 ```
 
-The **Foundation Verification Portal** is a dedicated, self-hosted case-review application with an applicant upload page, three independently administered shard stores, and an isolated reviewer workspace. It is not the public member application, a cloud drive, or a third-party KYC dashboard.
+The **Foundation Verification Portal** is a self-hosted, one-time review application with expiring uploads, temporary encrypted storage, and an isolated workspace—not a public application, cloud drive, evidence archive, or third-party KYC service.
 
-At ingestion, the portal scans, hashes, encrypts, and splits the submission into three shards, then erases the complete intake copy. A named reviewer using a hardware-backed credential can request a case. Only after two custodians approve may the workspace merge two shards in memory. This is the only point at which the reviewer can see the book PII, file metadata, ZKPassport receipt, tamper warnings, and permitted prior decisions. Closing the case wipes the reconstructed copy; the stored shards remain separate.
+The applicant uses an expiring link. Processing and malware scanning remain inside the controlled environment. A named reviewer with a hardware-backed credential sees only their assigned live case: the book, relevant metadata, ZKPassport result, and tamper warnings.
 
-The encrypted dossier retains only what is needed to audit the decision: original book evidence; hashes and chain of custody; relevant book fields; the ZK receipt; reviewer decisions; policy version; `submittedAt` and `verifiedAt`; EAS UID; soulbound-token ID; and correction, appeal, or revocation history.
+After the decision, the portal deletes the upload, review rendition, extracted fields, thumbnails, scan artefacts, temporary volumes, queue payloads, caches, and recoverable working copies. It retains no book numbers, images, screenshots, raw ZK proofs, evidence hashes, or free-text notes. There is no evidence backup or long-lived bucket versioning; deletion propagates to replicas and failed-job storage.
 
-Possible custodians include the Foundation security team, a separately governed Tibetan community institution, and an independent professional security trustee or HSM operator. Each request must identify the case, purpose, scope, and expiry.
+Only the membership result remains: verification basis, policy version, `verifiedAt`, EAS UID, token ID, and separately consented public ZK attributes. A random erasure reference may confirm deletion but is not derived from the evidence. Disputes or later suspicions require a fresh submission because the original material cannot be reopened.
 
-Safeguards include view-only watermarked sessions; downloads, printing, clipboard, and export disabled by default; encryption in transit and at rest; independent shard administration; no trackers or model training; fixed retention and tested erasure; and two-person approval for exceptional exports. Every request, approval, reconstruction, decision, export, and closure is timestamped on EAS using high-entropy case commitments—never PII.
+Safeguards include watermarked view-only sessions; no download, print, clipboard, or export; encryption in transit and temporary storage; automatic expiry; no trackers, external scanning, or model training; PII-redacted logs; and tested erasure. Request, decision, and erasure events use timestamped random commitments, never PII.
+
+Evidence retention or threshold custody may be reconsidered if the Foundation later has the staff, funding, legal basis, independent custodians, and security operations to run it safely. Current resources do not, so no verification evidence survives the initial decision.
 
 ## 4. Onchain records, token, and public attributes
 
@@ -177,10 +177,10 @@ Ethereum Attestation Service (EAS) is the public integrity, timestamp, and revoc
 | --- | --- |
 | Membership | Member commitment, active/restricted/revoked state, basis, standing, policy version, `verifiedAt`, and attestation time |
 | Vouch | Member commitment, pairwise voucher identifier, policy version, and timestamp |
-| Portal log | Case commitment, request/approval/open/decision/close event, purpose or verifier commitment, and timestamp |
-| Deletion | Fresh, non-identifying erasure commitment |
+| Portal log | Random case commitment, request/decision/erasure event, policy version, and timestamp |
+| Deletion | Fresh, non-identifying membership-erasure commitment |
 
-EAS must never contain PII, book or passport numbers, images, invite codes, raw ZK proofs, dossier locations, or low-entropy hashes of those values.
+EAS must never contain PII, book or passport numbers, images, invite codes, raw ZK proofs, evidence-storage locations, or low-entropy hashes of those values.
 
 Each approved book application or valid invite also receives a non-transferable **soulbound membership token** in the chosen membership wallet. It references the current EAS membership attestation and contains no PII, country, or age. Invalidating it affects membership access only, never other wallet assets. Because the token publicly links a wallet to pseudonymous membership, at-risk users should be offered a dedicated-wallet option and warned about blockchain correlation.
 
@@ -190,7 +190,7 @@ Country and the over-18 flag may appear publicly only with separate consent. Exa
 
 ```mermaid
 flowchart TD
-    A{Membership status change} -->|User deletion request| B[Delete shards, replicas, indexes, and backups]
+    A{Membership status change} -->|User deletion request| B[Remove application profile and private account data]
     A -->|Possible future CTA signed revocation| C[Review and appeal under policy]
     B --> D[Revoke EAS membership and invalidate soulbound token]
     C --> D
@@ -199,12 +199,12 @@ flowchart TD
     D --> G[May re-enter with a new eligible Green Book invite]
 ```
 
-An authenticated member may request deletion without a custodian vote. Subject to documented legal-retention exceptions, the service closes sessions, erases dossier shards and backups, removes indexes, revokes the EAS membership, and invalidates the soulbound token. This restricts membership-only parts of the Tibetan ecosystem but does not freeze or affect funds.
+Verification evidence is already erased after the initial decision. A member may later request deletion of their remaining profile and private account data. The service closes sessions, removes private indexes, revokes the EAS membership, and invalidates the soulbound token. Immutable onchain records remain visible as revoked. Membership-only access is restricted, but funds are unaffected.
 
 A future adapter might receive a minimal signed `valid`, `revoked`, or `unknown` status from the CTA's internal Green or Blue Book system. It should copy no CTA records. A confirmed revocation could restrict membership after review and appeal, but the adapter must have no permission in token, wallet, or treasury contracts.
 
 A deleted or revoked person may return through a new invite from an eligible Green Book holder. They need no book, passport, or ZKPassport for that route; the new profile is `Invite-only` and begins with the inviter's vouch. Blue Book holders cannot provide the invite.
 
-Before launch, the code and tests must demonstrate the over-18 gate, book-only Foundation authority, Foundation-free invites and vouches, 2-of-3 reconstruction, timestamped EAS events, soulbound-token invalidation, privacy thresholds, erasure, re-entry, and non-interference with funds.
+Before launch, the code and tests must demonstrate the over-18 gate, book-only Foundation authority, Foundation-free invites and vouches, the five-vouch cap, automatic evidence erasure including failure paths, timestamped EAS events, soulbound-token invalidation, privacy thresholds, re-entry, and non-interference with funds.
 
 Sources: [CTA Green Book portal](https://greenbook.tibet.net/), [CTA Blue Book background](https://tibet.net/support-tibet/friends-of-tibet/), [ZKPassport](https://zkpassport.id/), [EAS contracts](https://github.com/ethereum-attestation-service/eas-contracts), and [GitHub Mermaid support](https://docs.github.com/en/get-started/writing-on-github/working-with-advanced-formatting/creating-diagrams).
