@@ -13,14 +13,12 @@ flowchart TD
 
     B -->|1. Green Book| C[Applicant uploads Green Book evidence]
     B -->|2. Blue Book| D[Applicant uploads Blue Book evidence]
-    C --> E[Portal normalises name shown on book]
+    C --> E[Applicant completes ZKPassport proof]
     D --> E
-    E --> E0[Applicant completes session-bound ZKPassport proof]
-    E0 --> F{Over 18 equals true?}
+    E --> F{Over 18 equals true?}
     F -->|No| F0[Delete evidence; age requirement not met]
-    F -->|Yes| F1[Proof checks passport name matches book name]
-    F1 --> G[Portal holds evidence for one encrypted review session]
-    G --> H[Foundation reviews book PII and Boolean name-match result]
+    F -->|Yes| G[Portal holds evidence for one encrypted review session]
+    G --> H[Foundation verifier reviews book PII]
     H --> I{Approved?}
     I -->|No| I0[Delete evidence; application not approved]
     I -->|Yes| J[Foundation wallet records timestamped EAS membership]
@@ -82,13 +80,11 @@ flowchart TD
     A{Admission route} -->|1. Green Book| B[Upload Green Book evidence]
     A -->|2. Blue Book| C[Upload Blue Book evidence]
     A -->|3. Green Book invite| D[Redeem single-use invite]
-    B --> E[Normalise name shown on book]
+    B --> E[Complete ZKPassport proof]
     C --> E
-    E --> E0[Complete session-bound ZKPassport proof]
-    E0 --> F{Over 18 equals true?}
+    E --> F{Over 18 equals true?}
     F -->|No| G[Delete evidence; application cannot continue]
-    F -->|Yes| F1[Privately check passport name matches book name]
-    F1 --> H[Foundation reviews book and name-match result]
+    F -->|Yes| H[Foundation book review]
     H --> H0{Approved?}
     H0 -->|No| H1[Delete evidence; application not approved]
     H0 -->|Yes| I[Delete submitted evidence and temporary copies]
@@ -105,18 +101,13 @@ The CTA Green Book records voluntary contributions by Tibetans. The Blue Book, o
 
 For either book route, ZKPassport is an additional **proof-of-personhood** signal. It checks a supported NFC passport or identity document, reducing the chance of synthetic or AI-generated applicants passing an image-based book process. Green and Blue Book systems lack the cryptographic document infrastructure of many national passports.
 
-ZKPassport does not prove that a book is genuine. The Foundation must still assess it and bind both checks to one application session. The proof discloses only:
+ZKPassport does not prove that a book is genuine or belongs to the passport holder. The Foundation reviewer must still assess the book and bind both checks to one application session. The proof discloses only:
 
 - proof-of-personhood success;
-- whether the passport name matches the name provided from the book;
 - country; and
 - `over 18 = true`.
 
-The portal normalises the name shown on the uploaded book and binds its private commitment to the ZKPassport session. The proof checks it against the signed passport name and returns only a Boolean match result. The reviewer confirms that the committed value came from the displayed book. Neither name is published or retained. Name order, spacing, diacritics, and Tibetan transliteration require documented normalization and a manual step-up path rather than automatic rejection.
-
-This private equality check and its normalization rules must be implemented and independently audited in the chosen ZKPassport integration before launch.
-
-No name, birth date, passport number, address, photograph, or raw passport data is received from ZKPassport. The proof is deleted after review; country or over-18 status remains only when separately consented for public display. A false, missing, or failed over-18 result stops the application.
+No name, birth date, passport number, address, photograph, or raw passport data is received from ZKPassport. The proof is deleted after review; country or over-18 status remains only when separately consented for public display. Tibetan ID is an 18+ service: a false, missing, or failed over-18 result stops the application.
 
 An invite-only applicant does not need a passport or ZKPassport and instead declares that they are at least 18. This cannot guarantee age, but a later ZKPassport result that fails the over-18 rule prevents continued membership.
 
@@ -143,7 +134,7 @@ flowchart TD
     A[Applicant receives expiring upload link] --> B[Encrypted temporary upload]
     B --> C[Isolated scan and safe review rendition]
     C --> D[Assigned Foundation reviewer opens live case]
-    D --> E[Reviewer views book PII, ZK result, and Boolean name match]
+    D --> E[Reviewer views book PII and ZK result]
     E --> F{Decision}
     F -->|Reject or request resubmission| G[Record minimal outcome without PII]
     F -->|Approve| H[Foundation wallet writes timestamped EAS verification]
@@ -155,7 +146,7 @@ flowchart TD
 
 The **Foundation Verification Portal** is a self-hosted, one-time review application with expiring uploads, temporary encrypted storage, and an isolated workspace—not a public application, cloud drive, evidence archive, or third-party KYC service.
 
-The applicant uses an expiring link. Processing and malware scanning remain inside the controlled environment. A named reviewer with a hardware-backed credential sees only their assigned live case: the book, relevant metadata, ZKPassport result including the Boolean name match, and tamper warnings.
+The applicant uses an expiring link. Processing and malware scanning remain inside the controlled environment. A named reviewer with a hardware-backed credential sees only their assigned live case: the book, relevant metadata, ZKPassport result, and tamper warnings.
 
 After the decision, the portal deletes the upload, review rendition, extracted fields, thumbnails, scan artefacts, temporary volumes, queue payloads, caches, and recoverable working copies. It retains no book numbers, images, screenshots, raw ZK proofs, evidence hashes, or free-text notes. There is no evidence backup or long-lived bucket versioning; deletion propagates to replicas and failed-job storage.
 
@@ -215,6 +206,6 @@ A future adapter might receive a minimal signed `valid`, `revoked`, or `unknown`
 
 A revoked person may return through a new invite from an eligible Green Book holder. They need no book, passport, or ZKPassport for that route; the new profile is `Invite-only` and begins with the inviter's vouch. Blue Book holders cannot provide the invite.
 
-Before launch, the code and tests must demonstrate the over-18 gate, private session-bound name matching and normalization, book-only Foundation authority, Foundation-free invites and vouches, the five-vouch cap, automatic evidence erasure including failure paths, timestamped EAS events, soulbound-token invalidation, privacy thresholds, re-entry, and non-interference with funds.
+Before launch, the code and tests must demonstrate the over-18 gate, book-only Foundation authority, Foundation-free invites and vouches, the five-vouch cap, automatic evidence erasure including failure paths, timestamped EAS events, soulbound-token invalidation, privacy thresholds, re-entry, and non-interference with funds.
 
 Sources: [CTA Green Book portal](https://greenbook.tibet.net/), [CTA Blue Book background](https://tibet.net/support-tibet/friends-of-tibet/), [ZKPassport](https://zkpassport.id/), [EAS contracts](https://github.com/ethereum-attestation-service/eas-contracts), and [GitHub Mermaid support](https://docs.github.com/en/get-started/writing-on-github/working-with-advanced-formatting/creating-diagrams).
