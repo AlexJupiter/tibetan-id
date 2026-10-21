@@ -15,7 +15,7 @@ flowchart TD
     B -->|2. Blue Book| D[Applicant uploads Blue Book evidence]
     C --> E[Applicant completes ZKPassport proof]
     D --> E
-    E --> F{Over 18 equals true?}
+    E --> F{Over 18 equals true and name from passport matches Green/Blue Book?}
     F -->|No| F0[Delete evidence; age requirement not met]
     F -->|Yes| G[Portal holds evidence for one encrypted review session]
     G --> H[Foundation verifier reviews book PII]
